@@ -1,0 +1,95 @@
+name: Build Tech Home TV (Windows)
+
+# Manual build: Actions tab -> "Build Tech Home TV (Windows)" -> Run workflow.
+# Derived from the upstream build-and-make.yaml Windows steps, with macOS,
+# Linux, code signing, release publishing and nightly channels removed.
+on:
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    build-windows:
+        name: Build Tech Home TV for Windows
+        runs-on: windows-2022
+        timeout-minutes: 120
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v7
+
+            - name: Install pnpm
+              uses: pnpm/action-setup@v6.1.0
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v7
+              with:
+                  node-version-file: '.nvmrc'
+                  cache: 'pnpm'
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Inject TMDB API key
+              # No-op when the secret is unavailable.
+              env:
+                  TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+              run: node tools/tmdb/inject-tmdb-key.mjs
+
+            - name: Inject build commit
+              env:
+                  BUILD_COMMIT: ${{ github.sha }}
+              run: node tools/build/inject-build-commit.mjs
+
+            - name: Build frontend
+              run: pnpm nx build web --skip-nx-cache
+
+            - name: Resolve pinned Windows Embedded MPV runtime
+              id: windows-embedded-mpv-runtime-pin
+              shell: bash
+              run: node tools/embedded-mpv/windows-runtime-pin.mjs --github-output
+
+            - name: Stage Windows embedded MPV runtime archive
+              shell: bash
+              env:
+                  WINDOWS_RUNTIME_URL: ${{ steps.windows-embedded-mpv-runtime-pin.outputs.url }}
+                  WINDOWS_RUNTIME_SHA256: ${{ steps.windows-embedded-mpv-runtime-pin.outputs.sha256 }}
+              run: |
+                  set -euo pipefail
+
+                  if [ -z "${WINDOWS_RUNTIME_URL}" ] || [ -z "${WINDOWS_RUNTIME_SHA256}" ]; then
+                      echo "::error::The Windows Embedded MPV runtime pin did not resolve a URL and SHA-256 digest."
+                      exit 1
+                  fi
+
+                  pnpm embedded-mpv:stage-runtime:windows-archive -- "${WINDOWS_RUNTIME_URL}" "${WINDOWS_RUNTIME_SHA256}"
+
+            - name: Build backend
+              env:
+                  IPTVNATOR_EMBEDDED_MPV_PLATFORM: win32
+                  IPTVNATOR_EMBEDDED_MPV_ARCH: x64
+                  IPTVNATOR_LINUX_FRAME_COPY_PROFILE: ''
+                  IPTVNATOR_REQUIRE_EMBEDDED_MPV: '1'
+              run: pnpm run build:backend
+
+            - name: Make Windows installer
+              env:
+                  IPTVNATOR_EMBEDDED_MPV_PLATFORM: win32
+                  IPTVNATOR_EMBEDDED_MPV_ARCH: x64
+                  IPTVNATOR_LINUX_FRAME_COPY_PROFILE: ''
+                  IPTVNATOR_REQUIRE_EMBEDDED_MPV: '1'
+              run: pnpm run make:app -- --publishPolicy=never
+
+            - name: List build output
+              if: always()
+              shell: bash
+              run: ls -la dist/executables || true
+
+            - name: Upload installer
+              uses: actions/upload-artifact@v7
+              with:
+                  name: TechHomeTV-Windows
+                  path: dist/executables/*.exe
+                  if-no-files-found: error
+                  retention-days: 30
