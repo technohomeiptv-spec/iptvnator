@@ -1,18 +1,18 @@
 import {
+    ChangeDetectionStrategy,
     Component,
     EventEmitter,
     Output,
+    computed,
     inject,
+    signal,
     viewChild,
-    ChangeDetectionStrategy,
 } from '@angular/core';
 import {
-    AbstractControl,
     FormControl,
     FormGroup,
     FormsModule,
     ReactiveFormsModule,
-    ValidationErrors,
     Validators,
 } from '@angular/forms';
 import { MatIconButton } from '@angular/material/button';
@@ -20,32 +20,69 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIcon } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { Store } from '@ngrx/store';
-import { TranslatePipe } from '@ngx-translate/core';
 import { PlaylistActions } from '@iptvnator/m3u-state';
-import { createXtreamConnectionTestState } from '@iptvnator/services';
-import { PasswordVisibilityToggleDirective } from '@iptvnator/ui/components/password-visibility-toggle';
 import {
-    createRandomId,
-    extractXtreamCredentialsFromUrl,
-    normalizeXtreamServerUrl,
-    Playlist,
-} from '@iptvnator/shared/interfaces';
+    createXtreamConnectionTestState,
+    XtreamConnectionTestService,
+} from '@iptvnator/services';
+import { PasswordVisibilityToggleDirective } from '@iptvnator/ui/components/password-visibility-toggle';
+import { createRandomId, Playlist } from '@iptvnator/shared/interfaces';
 import { provideFormFieldDefaults } from '@iptvnator/ui/components/form-field-defaults';
+import {
+    TECHHOME_APP_TITLE,
+    TECHHOME_FALLBACK_CONFIG,
+    TechHomeConfig,
+    collectServers,
+    loadTechHomeConfig,
+    readRememberedServer,
+    rememberServer,
+} from './techhome-config';
 
-function xtreamServerUrlValidator(
-    control: AbstractControl
-): ValidationErrors | null {
-    const value = control.value;
-    if (typeof value !== 'string' || value.trim().length === 0) {
-        return null;
-    }
+type TechHomeLang = 'ar' | 'en';
 
+const LANG_KEY = 'techhome.lang';
+
+const STRINGS: Record<TechHomeLang, Record<string, string>> = {
+    ar: {
+        welcome: 'مرحباً بك في Tech Home TV',
+        hint: 'أدخل بيانات اشتراكك لتسجيل الدخول',
+        username: 'اسم المستخدم',
+        password: 'كلمة المرور',
+        showPassword: 'إظهار كلمة المرور',
+        checking: 'جارٍ التحقق من الاشتراك...',
+        failed: 'تعذّر تسجيل الدخول. تأكد من اسم المستخدم وكلمة المرور وحاول مرة أخرى، أو تواصل معنا.',
+        inactive: 'الاشتراك غير فعّال أو منتهي. تواصل معنا للتجديد.',
+        whatsapp: 'تواصل عبر واتساب',
+        website: 'الموقع الرسمي',
+        switchLang: 'English',
+    },
+    en: {
+        welcome: 'Welcome to Tech Home TV',
+        hint: 'Enter your subscription details to sign in',
+        username: 'Username',
+        password: 'Password',
+        showPassword: 'Show password',
+        checking: 'Verifying your subscription...',
+        failed: 'Sign-in failed. Check your username and password and try again, or contact us.',
+        inactive: 'Your subscription is inactive or expired. Contact us to renew.',
+        whatsapp: 'Contact us on WhatsApp',
+        website: 'Official website',
+        switchLang: 'العربية',
+    },
+};
+
+function readInitialLang(): TechHomeLang {
     try {
-        normalizeXtreamServerUrl(value);
-        return null;
+        return localStorage.getItem(LANG_KEY) === 'en' ? 'en' : 'ar';
     } catch {
-        return { xtreamServerUrl: true };
+        return 'ar';
     }
+}
+
+interface ProbeOutcome {
+    serverUrl: string | null;
+    /** True when a server recognised the account but it is not active. */
+    inactive: boolean;
 }
 
 @Component({
@@ -57,7 +94,6 @@ function xtreamServerUrlValidator(
         MatInputModule,
         PasswordVisibilityToggleDirective,
         ReactiveFormsModule,
-        TranslatePipe,
     ],
     selector: 'app-xtream-code-import',
     providers: [provideFormFieldDefaults()],
@@ -71,61 +107,152 @@ function xtreamServerUrlValidator(
                 justify-content: center;
             }
 
+            .th-login {
+                width: 100%;
+                max-width: 420px;
+                text-align: center;
+            }
+
+            .th-logo {
+                display: block;
+                max-width: 260px;
+                width: 70%;
+                height: auto;
+                margin: 4px auto 12px;
+            }
+
+            .th-login h2 {
+                margin: 0 0 4px;
+            }
+
+            .th-hint {
+                margin: 0 0 16px;
+                opacity: 0.75;
+            }
+
             form {
                 width: 100%;
+                text-align: start;
+            }
+
+            .th-status {
+                margin: 8px 0;
+                text-align: center;
+                opacity: 0.85;
+            }
+
+            .th-error {
+                margin: 8px 0;
+                text-align: center;
+                color: #ff5252;
+            }
+
+            .th-links {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px 20px;
+                justify-content: center;
+                margin-top: 14px;
+            }
+
+            .th-links a,
+            .th-lang {
+                color: inherit;
+                text-decoration: underline;
+                cursor: pointer;
+            }
+
+            .th-lang {
+                background: none;
+                border: none;
+                padding: 0;
+                font: inherit;
             }
         `,
     ],
 })
 export class XtreamCodeImportComponent {
     @Output() addClicked = new EventEmitter<void>();
-    URL_REGEX = /^\s*https?:\/\/[^ "]+\s*$/;
 
+    /**
+     * Same shape as the original form so the add-playlist dialog bindings
+     * keep working. Title and server URL are filled automatically; only the
+     * username and password are entered by the subscriber.
+     */
     form = new FormGroup({
         _id: new FormControl(createRandomId()),
-        title: new FormControl('', [Validators.required]),
+        title: new FormControl(TECHHOME_APP_TITLE),
         password: new FormControl('', [Validators.required]),
         username: new FormControl('', [Validators.required]),
-        serverUrl: new FormControl('', [
-            Validators.required,
-            Validators.pattern(this.URL_REGEX),
-            xtreamServerUrlValidator,
-        ]),
+        serverUrl: new FormControl(
+            TECHHOME_FALLBACK_CONFIG.packages[0]?.servers[0] ?? ''
+        ),
         importDate: new FormControl(new Date().toISOString()),
     });
 
     readonly store = inject(Store);
     readonly connectionTest = createXtreamConnectionTestState(this.form);
+    private readonly connectionService = inject(XtreamConnectionTestService);
     private readonly passwordToggle = viewChild(
         PasswordVisibilityToggleDirective
     );
 
-    get isTestingConnection(): boolean {
-        return this.connectionTest.testing();
+    readonly lang = signal<TechHomeLang>(readInitialLang());
+    readonly t = computed(() => STRINGS[this.lang()]);
+    readonly busy = signal(false);
+    readonly error = signal('');
+    readonly config = signal<TechHomeConfig>(TECHHOME_FALLBACK_CONFIG);
+    readonly links = computed(() => ({
+        whatsapp:
+            this.config().links?.whatsapp ??
+            TECHHOME_FALLBACK_CONFIG.links?.whatsapp ??
+            '',
+        website:
+            this.config().links?.website ??
+            TECHHOME_FALLBACK_CONFIG.links?.website ??
+            '',
+    }));
+
+    constructor() {
+        void loadTechHomeConfig().then((config) => this.config.set(config));
     }
 
-    testConnection(allowHttpFallback = false): Promise<void> {
-        return this.connectionTest.test(allowHttpFallback);
+    get isTestingConnection(): boolean {
+        return this.busy() || this.connectionTest.testing();
+    }
+
+    toggleLang(): void {
+        const next: TechHomeLang = this.lang() === 'ar' ? 'en' : 'ar';
+        this.lang.set(next);
+        try {
+            localStorage.setItem(LANG_KEY, next);
+        } catch {
+            // storage unavailable - ignore
+        }
+    }
+
+    /** Kept for compatibility: checks the credentials without saving. */
+    async testConnection(_allowHttpFallback = false): Promise<void> {
+        await this.authenticate();
     }
 
     clearForm(): void {
         // A cleared form is a fresh entry: the next password starts masked.
         this.passwordToggle()?.hide();
+        this.error.set('');
         this.form.reset({
             _id: createRandomId(),
-            title: '',
+            title: TECHHOME_APP_TITLE,
             password: '',
             username: '',
-            serverUrl: '',
+            serverUrl: this.form.value.serverUrl ?? '',
             importDate: new Date().toISOString(),
         });
     }
 
-    addPlaylist() {
-        if (!this.form.valid || this.isTestingConnection) return;
-
-        const connection = this.getNormalizedConnection();
-        if (!connection) {
+    async addPlaylist(): Promise<void> {
+        const login = await this.authenticate();
+        if (!login) {
             return;
         }
 
@@ -133,49 +260,131 @@ export class XtreamCodeImportComponent {
             PlaylistActions.addPlaylist({
                 playlist: {
                     ...this.form.value,
-                    password: connection.password,
-                    serverUrl: connection.serverUrl,
-                    username: connection.username,
+                    title: login.title,
+                    username: login.username,
+                    password: login.password,
+                    serverUrl: login.serverUrl,
                 } as Playlist,
             })
         );
         this.addClicked.emit();
     }
 
-    extractParams(urlAsString: string): void {
-        if (
-            this.form.get('username')?.value !== '' ||
-            this.form.get('password')?.value !== ''
-        )
-            return;
+    /**
+     * Tries the remembered server first, then every configured server in
+     * parallel. The first one that accepts the credentials wins.
+     */
+    private async authenticate(): Promise<{
+        username: string;
+        password: string;
+        serverUrl: string;
+        title: string;
+    } | null> {
+        if (!this.form.valid || this.busy()) {
+            return null;
+        }
+
+        const username = (this.form.value.username ?? '').trim();
+        const password = (this.form.value.password ?? '').trim();
+        if (!username || !password) {
+            return null;
+        }
+
+        this.busy.set(true);
+        this.error.set('');
+
         try {
-            const credentials = extractXtreamCredentialsFromUrl(urlAsString);
-            if (!credentials) {
-                return;
+            const config = await loadTechHomeConfig();
+            this.config.set(config);
+
+            const outcome = await this.findWorkingServer(
+                username,
+                password,
+                collectServers(config)
+            );
+
+            if (!outcome.serverUrl) {
+                this.error.set(
+                    outcome.inactive
+                        ? this.t()['inactive']
+                        : this.t()['failed']
+                );
+                return null;
             }
 
-            this.form.get('username')?.setValue(credentials.username);
-            this.form.get('password')?.setValue(credentials.password);
-        } catch (error) {
-            console.error('Invalid URL', error);
+            rememberServer(username, outcome.serverUrl);
+
+            return {
+                username,
+                password,
+                serverUrl: outcome.serverUrl,
+                title: config.appName || TECHHOME_APP_TITLE,
+            };
+        } finally {
+            this.busy.set(false);
         }
     }
 
-    private getNormalizedConnection(): {
-        password: string;
-        serverUrl: string;
-        username: string;
-    } | null {
-        try {
-            return {
-                password: (this.form.value.password as string).trim(),
-                serverUrl: normalizeXtreamServerUrl(
-                    this.form.value.serverUrl as string
-                ),
-                username: (this.form.value.username as string).trim(),
-            };
-        } catch {
+    private async findWorkingServer(
+        username: string,
+        password: string,
+        servers: string[]
+    ): Promise<ProbeOutcome> {
+        let inactive = false;
+
+        const probe = async (serverUrl: string): Promise<string | null> => {
+            try {
+                const result = await this.connectionService.test(
+                    { serverUrl, username, password },
+                    () => true,
+                    true
+                );
+                if (result.status === 'active') {
+                    return result.serverUrl;
+                }
+                if (result.status !== 'unavailable') {
+                    inactive = true;
+                }
+            } catch {
+                // unreachable server - try the next one
+            }
             return null;
+        };
+
+        const remembered = readRememberedServer(username);
+        if (remembered && servers.includes(remembered)) {
+            const hit = await probe(remembered);
+            if (hit) {
+                return { serverUrl: hit, inactive };
+            }
         }
+
+        const rest = servers.filter((url) => url !== remembered);
+        if (rest.length === 0) {
+            return { serverUrl: null, inactive };
+        }
+
+        const winner = await new Promise<string | null>((resolve) => {
+            let pending = rest.length;
+            let settled = false;
+            for (const url of rest) {
+                void probe(url).then((hit) => {
+                    if (settled) {
+                        return;
+                    }
+                    if (hit) {
+                        settled = true;
+                        resolve(hit);
+                        return;
+                    }
+                    pending -= 1;
+                    if (pending === 0) {
+                        resolve(null);
+                    }
+                });
+            }
+        });
+
+        return { serverUrl: winner, inactive: winner ? false : inactive };
     }
 }
