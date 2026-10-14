@@ -99,6 +99,20 @@ export class AppComponent implements OnInit {
     constructor() {
         syncDocumentLanguage();
 
+        // Tech Home TV: keep the page direction in step with the language
+        // (right-to-left for Arabic, left-to-right otherwise).
+        let initialLang = 'ar';
+        try {
+            initialLang =
+                localStorage.getItem('iptvnator:preferred-language') || 'ar';
+        } catch {
+            // Ignore privacy-mode storage errors.
+        }
+        this.applyDirection(initialLang);
+        this.translate.onLangChange.subscribe((event: { lang: string }) =>
+            this.applyDirection(event.lang)
+        );
+
         // Body-level class (like 'dark-theme') so layout adjustments also
         // reach content rendered outside app-root, e.g. cdk-overlay content.
         if (this.runtime.usesCustomWindowControls) {
@@ -203,6 +217,16 @@ export class AppComponent implements OnInit {
                     this.detectDarkMode();
                 }
             });
+    }
+
+    /** Languages written right-to-left. */
+    private readonly RTL_LANGS = new Set(['ar', 'ary']);
+
+    private applyDirection(lang: string | undefined): void {
+        const code = (lang ?? '').toLowerCase();
+        document.documentElement.dir = this.RTL_LANGS.has(code)
+            ? 'rtl'
+            : 'ltr';
     }
 
     /**
