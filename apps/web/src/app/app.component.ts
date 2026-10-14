@@ -93,6 +93,9 @@ export class AppComponent implements OnInit {
     /** Default language as fallback */
     private readonly DEFAULT_LANG = Language.ENGLISH;
 
+    /** Tech Home TV: language used until the subscriber picks another one */
+    private readonly INITIAL_LANG = 'ar' as unknown as Language;
+
     constructor() {
         syncDocumentLanguage();
 
@@ -161,7 +164,10 @@ export class AppComponent implements OnInit {
                     // Settings are stored in IndexedDB and loaded by the settings store
                     // Only specific Electron settings (MPV/VLC paths) are sent when changed in settings component
 
-                    const resolvedLang = settings.language ?? this.DEFAULT_LANG;
+                    const resolvedLang = settings.language ?? this.INITIAL_LANG;
+                    if (!settings.language) {
+                        this.translate.use(resolvedLang);
+                    }
                     // The switch re-renders every date with the new locale;
                     // its data is a lazy chunk that must be registered first.
                     void this.dateLocales.use(resolvedLang);
@@ -193,6 +199,7 @@ export class AppComponent implements OnInit {
                         this.detectDarkMode();
                     }
                 } else {
+                    this.translate.use(this.INITIAL_LANG);
                     this.detectDarkMode();
                 }
             });
