@@ -93,8 +93,22 @@ export class AppComponent implements OnInit {
     /** Default language as fallback */
     private readonly DEFAULT_LANG = Language.ENGLISH;
 
-    /** Tech Home TV: language used until the subscriber picks another one */
-    private readonly INITIAL_LANG = 'ar' as unknown as Language;
+    /**
+     * Tech Home TV: language used until the subscriber picks another one.
+     * Honours the choice made on the sign-in screen (saved as a hint) and
+     * falls back to Arabic.
+     */
+    private get INITIAL_LANG(): Language {
+        try {
+            const saved = localStorage.getItem('iptvnator:preferred-language');
+            if (saved && /^[a-z]{2,4}$/.test(saved)) {
+                return saved as unknown as Language;
+            }
+        } catch {
+            // Ignore privacy-mode storage errors.
+        }
+        return 'ar' as unknown as Language;
+    }
 
     constructor() {
         syncDocumentLanguage();
