@@ -88,7 +88,7 @@ export function getInitialLanguage(): string {
     } catch {
         // localStorage may throw in privacy modes; fall through to default.
     }
-    return 'en';
+    return 'ar';
 }
 
 /**
