@@ -20,6 +20,7 @@ import {
 } from './app-update-release-catalog';
 import { AppUpdateReleaseCatalogs } from './app-update-release-notes';
 
+const UPDATES_DISABLED = true;
 export const APP_UPDATE_MANUAL_DOWNLOAD_URL = appUpdateReleasesPageUrl(
     DEFAULT_APP_UPDATE_CHANNEL
 );
