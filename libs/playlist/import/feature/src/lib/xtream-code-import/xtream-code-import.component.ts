@@ -8,6 +8,7 @@ import {
     signal,
     viewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
     FormControl,
     FormGroup,
@@ -20,6 +21,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIcon } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { Store } from '@ngrx/store';
+import { TranslateService } from '@ngx-translate/core';
 import { PlaylistActions } from '@iptvnator/m3u-state';
 import {
     createXtreamConnectionTestState,
@@ -40,7 +42,8 @@ import {
 
 type TechHomeLang = 'ar' | 'en';
 
-const LANG_KEY = 'techhome.lang';
+/** Same hint key the app itself uses to remember the chosen language. */
+const PREFERRED_LANG_KEY = 'iptvnator:preferred-language';
 
 const STRINGS: Record<TechHomeLang, Record<string, string>> = {
     ar: {
@@ -71,9 +74,13 @@ const STRINGS: Record<TechHomeLang, Record<string, string>> = {
     },
 };
 
+function toTechHomeLang(code: string | null | undefined): TechHomeLang {
+    return !code || code.toLowerCase().startsWith('ar') ? 'ar' : 'en';
+}
+
 function readInitialLang(): TechHomeLang {
     try {
-        return localStorage.getItem(LANG_KEY) === 'en' ? 'en' : 'ar';
+        return toTechHomeLang(localStorage.getItem(PREFERRED_LANG_KEY));
     } catch {
         return 'ar';
     }
@@ -147,26 +154,74 @@ interface ProbeOutcome {
                 color: #ff5252;
             }
 
-            .th-links {
+            .th-actions {
                 display: flex;
                 flex-wrap: wrap;
-                gap: 8px 20px;
-                justify-content: center;
+                gap: 10px;
                 margin-top: 14px;
             }
 
-            .th-links a,
-            .th-lang {
+            .th-btn {
+                flex: 1 1 150px;
+                min-width: 0;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                padding: 10px 14px;
+                border-radius: 999px;
+                font-weight: 500;
+                font-size: 14px;
+                line-height: 1.2;
+                text-decoration: none;
                 color: inherit;
-                text-decoration: underline;
+                border: 1px solid currentColor;
                 cursor: pointer;
+                transition: opacity 0.15s ease;
+            }
+
+            .th-btn:hover {
+                opacity: 0.85;
+            }
+
+            .th-btn mat-icon {
+                width: 20px;
+                height: 20px;
+                font-size: 20px;
+                flex: none;
+            }
+
+            .th-btn--whatsapp {
+                background: #25d366;
+                border-color: #25d366;
+                color: #fff;
             }
 
             .th-lang {
-                background: none;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                margin-top: 14px;
+                padding: 6px 12px;
+                background: transparent;
                 border: none;
-                padding: 0;
+                border-radius: 999px;
+                color: inherit;
                 font: inherit;
+                font-size: 13px;
+                opacity: 0.8;
+                cursor: pointer;
+            }
+
+            .th-lang:hover {
+                opacity: 1;
+                background: rgba(128, 128, 128, 0.15);
+            }
+
+            .th-lang mat-icon {
+                width: 18px;
+                height: 18px;
+                font-size: 18px;
             }
         `,
     ],
@@ -193,10 +248,12 @@ export class XtreamCodeImportComponent {
     readonly store = inject(Store);
     readonly connectionTest = createXtreamConnectionTestState(this.form);
     private readonly connectionService = inject(XtreamConnectionTestService);
+    private readonly translate = inject(TranslateService);
     private readonly passwordToggle = viewChild(
         PasswordVisibilityToggleDirective
     );
 
+    /** Follows the application language, so direction and fields stay in step. */
     readonly lang = signal<TechHomeLang>(readInitialLang());
     readonly t = computed(() => STRINGS[this.lang()]);
     readonly busy = signal(false);
@@ -215,20 +272,27 @@ export class XtreamCodeImportComponent {
 
     constructor() {
         void loadTechHomeConfig().then((config) => this.config.set(config));
+        this.translate.onLangChange
+            .pipe(takeUntilDestroyed())
+            .subscribe((event: { lang: string }) =>
+                this.lang.set(toTechHomeLang(event.lang))
+            );
     }
 
     get isTestingConnection(): boolean {
         return this.busy() || this.connectionTest.testing();
     }
 
+    /** Switches the whole application between Arabic and English. */
     toggleLang(): void {
         const next: TechHomeLang = this.lang() === 'ar' ? 'en' : 'ar';
-        this.lang.set(next);
         try {
-            localStorage.setItem(LANG_KEY, next);
+            localStorage.setItem(PREFERRED_LANG_KEY, next);
         } catch {
             // storage unavailable - ignore
         }
+        this.lang.set(next);
+        this.translate.use(next);
     }
 
     /** Kept for compatibility: checks the credentials without saving. */
