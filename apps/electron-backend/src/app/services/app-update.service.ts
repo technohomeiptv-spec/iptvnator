@@ -238,7 +238,7 @@ export class AppUpdateService {
             this.status.status ===
                 ELECTRON_BRIDGE_APP_UPDATE_STATUSES.Downloaded;
 
-        if (busy || !this.isPackaged) {
+            if (busy || UPDATES_DISABLED || !this.isPackaged) {
             this.setStatus({});
             return;
         }
