@@ -290,8 +290,8 @@ export class AppUpdateService {
         return this.getStatus();
     }
 
-    async checkForUpdatesOnStartup(): Promise<ElectronBridgeAppUpdateStatus> {
-        if (!this.isPackaged) {
+        async checkForUpdatesOnStartup(): Promise<ElectronBridgeAppUpdateStatus> {
+        if (UPDATES_DISABLED || !this.isPackaged) {
             return this.getStatus();
         }
 
