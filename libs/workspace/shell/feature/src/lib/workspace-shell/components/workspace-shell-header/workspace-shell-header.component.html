@@ -53,15 +53,17 @@
     <!-- Playlist switcher hidden on /settings: those controls are
          playlist-scoped, but Settings is a global page. Per the UX
          audit, leaving them visible implied switching playlists changes
-         which settings you're editing. -->
+         which settings you're editing.
+         Tech Home TV: "playlist info" (may reveal the server address) and
+         "add playlist" are switched off for subscribers. -->
     @if (!isSettingsRoute()) {
         <app-playlist-switcher
             class="playlist-switcher"
             [currentTitle]="playlistTitle()"
             [subtitle]="playlistSubtitle()"
-            [showPlaylistInfo]="canOpenPlaylistInfo()"
+            [showPlaylistInfo]="false"
             [showAccountInfo]="canOpenAccountInfo()"
-            [showAddPlaylist]="true"
+            [showAddPlaylist]="false"
             [canRefreshActivePlaylist]="canRefreshPlaylist()"
             [isRefreshingActivePlaylist]="isRefreshingPlaylist()"
             (playlistInfoRequested)="onPlaylistInfoRequested()"
@@ -75,7 +77,8 @@
     }
 
     <!-- Settings search works without any playlist, so a fresh user can
-         find settings before importing a first source. -->
+         find settings before importing a first source.
+         Tech Home TV: the command-palette button is removed. -->
     @if (!hasNoPlaylists() || isSettingsRoute()) {
         <label class="search-field">
             <mat-icon>search</mat-icon>
@@ -100,54 +103,12 @@
                     {{ searchStatusLabel() }}
                 </span>
             }
-            <button
-                type="button"
-                class="command-trigger"
-                (click)="onCommandPaletteRequested()"
-                [matTooltip]="
-                    'WORKSPACE.SHELL.COMMAND_PALETTE_SHORTCUT' | translate
-                "
-                [attr.aria-label]="
-                    'WORKSPACE.SHELL.OPEN_COMMAND_PALETTE' | translate
-                "
-            >
-                <!-- The shortcut label is the affordance on a keyboard; on a
-                     phone it means nothing, but this button is the only way
-                     to open the palette, so it becomes an icon rather than
-                     disappearing. -->
-                <span class="command-trigger__shortcut">{{
-                    commandShortcutLabel
-                }}</span>
-                <mat-icon class="command-trigger__icon">bolt</mat-icon>
-            </button>
         </label>
     }
 
-    <!-- The "Add playlist" button stays visible on /settings — adding a
-         playlist is a global action, not playlist-scoped, so it must
-         remain reachable (e.g. a fresh user configuring the app before
-         importing their first source). Only the per-playlist shortcut
-         is hidden on Settings. -->
+    <!-- Tech Home TV: the keyboard-shortcuts button and the "Add playlist"
+         button are removed; subscribers sign in with their account only. -->
     <div class="header-actions header-actions--leading">
-        <button
-            type="button"
-            class="shortcuts-trigger"
-            mat-icon-button
-            (click)="onShortcutsRequested()"
-            [matTooltip]="'WORKSPACE.SHORTCUTS.OPEN_TOOLTIP' | translate"
-            [attr.aria-label]="'WORKSPACE.SHORTCUTS.OPEN_ARIA' | translate"
-        >
-            <mat-icon>keyboard</mat-icon>
-        </button>
-        <button
-            type="button"
-            mat-icon-button
-            (click)="onAddPlaylistRequested()"
-            [matTooltip]="'WORKSPACE.SHELL.ADD_PLAYLIST_ALL' | translate"
-            [attr.aria-label]="'WORKSPACE.SHELL.ADD_PLAYLIST' | translate"
-        >
-            <mat-icon>add</mat-icon>
-        </button>
         @if (parentalLockState() !== 'off') {
             <button
                 type="button"
