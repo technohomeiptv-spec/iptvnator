@@ -1,4 +1,4 @@
-<div class="th-login" [attr.dir]="lang() === 'ar' ? 'rtl' : 'ltr'">
+<div class="th-login">
     <img
         class="th-logo"
         src="assets/branding/logo-800.png"
@@ -51,19 +51,33 @@
         <p class="th-error" role="alert">{{ error() }}</p>
     }
 
-    <div class="th-links">
+    <div class="th-actions">
         @if (links().whatsapp) {
-            <a [href]="links().whatsapp" target="_blank" rel="noopener">{{
-                t()['whatsapp']
-            }}</a>
+            <a
+                class="th-btn th-btn--whatsapp"
+                [href]="links().whatsapp"
+                target="_blank"
+                rel="noopener"
+            >
+                <mat-icon>chat</mat-icon>
+                <span>{{ t()['whatsapp'] }}</span>
+            </a>
         }
         @if (links().website) {
-            <a [href]="links().website" target="_blank" rel="noopener">{{
-                t()['website']
-            }}</a>
+            <a
+                class="th-btn"
+                [href]="links().website"
+                target="_blank"
+                rel="noopener"
+            >
+                <mat-icon>language</mat-icon>
+                <span>{{ t()['website'] }}</span>
+            </a>
         }
-        <button type="button" class="th-lang" (click)="toggleLang()">
-            {{ t()['switchLang'] }}
-        </button>
     </div>
+
+    <button type="button" class="th-lang" (click)="toggleLang()">
+        <mat-icon>translate</mat-icon>
+        <span>{{ t()['switchLang'] }}</span>
+    </button>
 </div>
