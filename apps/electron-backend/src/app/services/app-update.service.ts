@@ -111,7 +111,8 @@ function isSelfUpdateSupported(
     platform: NodeJS.Platform,
     processEnv: NodeJS.ProcessEnv
 ): boolean {
-    if (!isPackaged) {
+    
+    if (UPDATES_DISABLED || !isPackaged) {
         return false;
     }
 
