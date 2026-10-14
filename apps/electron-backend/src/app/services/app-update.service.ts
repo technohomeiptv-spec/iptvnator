@@ -260,8 +260,8 @@ export class AppUpdateService {
         return this.checkForUpdatesPromise;
     }
 
-    private async runCheckForUpdates(): Promise<ElectronBridgeAppUpdateStatus> {
-        if (!this.isPackaged) {
+        private async runCheckForUpdates(): Promise<ElectronBridgeAppUpdateStatus> {
+        if (UPDATES_DISABLED || !this.isPackaged) {
             this.setStatus({
                 status: ELECTRON_BRIDGE_APP_UPDATE_STATUSES.Unsupported,
             });
