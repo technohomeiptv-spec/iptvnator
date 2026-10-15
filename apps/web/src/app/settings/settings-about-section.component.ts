@@ -1,17 +1,20 @@
 import {
     Component,
     computed,
+    inject,
     input,
     output,
+    signal,
     ViewEncapsulation,
     ChangeDetectionStrategy,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
-import { TranslateModule } from '@ngx-translate/core';
+import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import {
     AppUpdateChannel,
     APP_UPDATE_CHANNELS,
@@ -25,6 +28,105 @@ import { provideFormFieldDefaults } from '@iptvnator/ui/components/form-field-de
 interface SettingsUpdateStatusChip {
     readonly labelKey: string;
     readonly tone: 'accent' | 'success' | 'warn' | 'neutral';
+}
+
+type TechHomeLang = 'ar' | 'en';
+
+interface AboutStrings {
+    subtitle: string;
+    tagline: string;
+    contactTitle: string;
+    whatsapp: string;
+    whatsappDesc: string;
+    website: string;
+    websiteDesc: string;
+    credits: string;
+}
+
+const ABOUT_STRINGS: Record<TechHomeLang, AboutStrings> = {
+    ar: {
+        subtitle: 'معلومات التطبيق وطرق التواصل معنا',
+        tagline: 'كل ما تحب مشاهدته في مكان واحد',
+        contactTitle: 'تواصل معنا',
+        whatsapp: 'واتساب',
+        whatsappDesc: 'تحدث مع فريق الدعم مباشرة',
+        website: 'الموقع الرسمي',
+        websiteDesc: 'زر موقعنا الرسمي',
+        credits:
+            'مبني على IPTVnator، وهو مشروع مفتوح المصدر برخصة MIT.',
+    },
+    en: {
+        subtitle: 'App information and ways to reach us',
+        tagline: 'Everything you love to watch, in one place',
+        contactTitle: 'Contact us',
+        whatsapp: 'WhatsApp',
+        whatsappDesc: 'Chat with our support team',
+        website: 'Official website',
+        websiteDesc: 'Visit our official website',
+        credits:
+            'Built on IPTVnator, an open-source project licensed under MIT.',
+    },
+};
+
+/** Same hint key the application uses to remember the chosen language. */
+const PREFERRED_LANG_KEY = 'iptvnator:preferred-language';
+/** Written by the sign-in screen after it loads the remote configuration. */
+const CONFIG_CACHE_KEY = 'techhome.config.v1';
+const CONFIG_URL =
+    'https://raw.githubusercontent.com/technohomeiptv-spec/techhome-config/main/servers.json';
+
+interface ContactLinks {
+    whatsapp: string;
+    website: string;
+}
+
+const FALLBACK_LINKS: ContactLinks = {
+    whatsapp: 'https://wa.me/9647744644492',
+    website: 'https://techhome.ct.ws/',
+};
+
+function isHttpUrl(value: unknown): value is string {
+    return typeof value === 'string' && /^https?:\/\/\S+$/i.test(value.trim());
+}
+
+function pickLinks(raw: unknown): ContactLinks | null {
+    if (!raw || typeof raw !== 'object') {
+        return null;
+    }
+    const links = (raw as Record<string, unknown>)['links'];
+    if (!links || typeof links !== 'object') {
+        return null;
+    }
+    const record = links as Record<string, unknown>;
+    return {
+        whatsapp: isHttpUrl(record['whatsapp'])
+            ? record['whatsapp'].trim()
+            : FALLBACK_LINKS.whatsapp,
+        website: isHttpUrl(record['website'])
+            ? record['website'].trim()
+            : FALLBACK_LINKS.website,
+    };
+}
+
+function readCachedLinks(): ContactLinks {
+    try {
+        const text = localStorage.getItem(CONFIG_CACHE_KEY);
+        return (text ? pickLinks(JSON.parse(text)) : null) ?? FALLBACK_LINKS;
+    } catch {
+        return FALLBACK_LINKS;
+    }
+}
+
+function toTechHomeLang(code: string | null | undefined): TechHomeLang {
+    return !code || code.toLowerCase().startsWith('ar') ? 'ar' : 'en';
+}
+
+function readInitialLang(): TechHomeLang {
+    try {
+        return toTechHomeLang(localStorage.getItem(PREFERRED_LANG_KEY));
+    } catch {
+        return 'ar';
+    }
 }
 
 @Component({
@@ -42,6 +144,20 @@ interface SettingsUpdateStatusChip {
     encapsulation: ViewEncapsulation.None,
     changeDetection: ChangeDetectionStrategy.OnPush,
     styleUrls: ['./settings-about-section.component.scss'],
+    styles: [
+        `
+            .link-card--whatsapp .link-card__glyph {
+                color: #25d366;
+            }
+
+            .th-credits {
+                margin: 14px 0 0;
+                text-align: center;
+                font-size: 12px;
+                opacity: 0.6;
+            }
+        `,
+    ],
 })
 export class SettingsAboutSectionComponent {
     readonly isDesktop = input(false);
@@ -58,10 +174,24 @@ export class SettingsAboutSectionComponent {
      */
     readonly form = input<FormGroup | null>(null);
 
+    private readonly translate = inject(TranslateService);
+
+    /** Tech Home TV: follows the application language. */
+    readonly lang = signal<TechHomeLang>(readInitialLang());
+    readonly t = computed(() => ABOUT_STRINGS[this.lang()]);
+    readonly links = signal<ContactLinks>(readCachedLinks());
+
     constructor() {
         // Parent patches (Discard, backup import) change the form outside
         // this OnPush section's events.
         markSectionForCheckOnFormEvents(this.form);
+
+        this.translate.onLangChange
+            .pipe(takeUntilDestroyed())
+            .subscribe((event: { lang: string }) =>
+                this.lang.set(toTechHomeLang(event.lang))
+            );
+        void this.refreshLinks();
     }
 
     readonly updateChannelOptions = input<UpdateChannelOption[]>([]);
@@ -276,4 +406,26 @@ export class SettingsAboutSectionComponent {
                 return 'SETTINGS.APP_UPDATE_IDLE';
         }
     });
+
+    /** Reads the contact links from the remote file; keeps cached ones on failure. */
+    private async refreshLinks(): Promise<void> {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 5000);
+        try {
+            const response = await fetch(`${CONFIG_URL}?t=${Date.now()}`, {
+                signal: controller.signal,
+                cache: 'no-store',
+            });
+            if (response.ok) {
+                const links = pickLinks(await response.json());
+                if (links) {
+                    this.links.set(links);
+                }
+            }
+        } catch {
+            // offline or blocked - keep what we have
+        } finally {
+            clearTimeout(timer);
+        }
+    }
 }
