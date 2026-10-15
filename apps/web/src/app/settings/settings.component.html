@@ -42,6 +42,9 @@
                  page survive a visit to another. -->
             <!-- An active header search term (`q`) replaces the section page
                  with ranked results across every section. -->
+            <!-- Tech Home TV: the EPG, dashboard, remote-control, TMDB and
+                 backup sections are not offered to subscribers; they fall
+                 through to the general section. -->
             @if (search.isSearching()) {
                 <app-settings-search-results
                     [query]="search.query()"
@@ -70,38 +73,6 @@
                             (selectRecordingFolder)="selectRecordingFolder()"
                         />
                     }
-                    @case ('epg') {
-                        <app-settings-epg-section
-                            [form]="settingsForm"
-                            [epgUrl]="form.epgUrl"
-                            [isClearingEpgData]="epg.isClearing()"
-                            [canBrowseFiles]="epg.supportsFilePicker"
-                            [epgViewModeOptions]="epgViewModeOptions"
-                            (refreshEpg)="epg.refresh($event)"
-                            (browseEpgSource)="epg.browse($event)"
-                            (removeEpgSource)="form.removeEpgSource($event)"
-                            (addEpgSource)="form.addEpgSource()"
-                            (refreshAllEpg)="epg.refreshAll()"
-                            (clearEpgData)="epg.clear()"
-                            (selectEpgViewMode)="form.selectEpgViewMode($event)"
-                        />
-                    }
-                    @case ('dashboard') {
-                        <app-settings-dashboard-section [form]="settingsForm" />
-                    }
-                    @case ('remote-control') {
-                        <app-settings-remote-control-section
-                            [form]="settingsForm"
-                            [localIpAddresses]="
-                                remoteControl.localIpAddresses()
-                            "
-                            [visibleQrCodeIp]="remoteControl.visibleQrCodeIp()"
-                            (toggleQrCode)="remoteControl.toggleQrCode($event)"
-                        />
-                    }
-                    @case ('tmdb') {
-                        <app-settings-tmdb-section [form]="settingsForm" />
-                    }
                     @case ('parental') {
                         <app-settings-parental-lock-section
                             [enabled]="parentalLock.enabled()"
@@ -117,29 +88,6 @@
                             "
                             (lockNow)="parentalLock.lockNow()"
                             (unlock)="parentalLock.unlock()"
-                        />
-                    }
-                    @case ('backup') {
-                        <!-- Backup & data: the former Reset page is this
-                             page's last card, since it is one action. -->
-                        <app-settings-backup-section
-                            [isPwa]="isPwa"
-                            [isRemovingAllPlaylists]="
-                                playlistReset.isRemovingAllPlaylists()
-                            "
-                            [isExportingData]="backup.isExportingData()"
-                            [canRemoveAllPlaylists]="
-                                playlistReset.canRemoveAll()
-                            "
-                            [playlistDeleteSummary]="
-                                playlistReset.deleteSummary()
-                            "
-                            [removeAllProgressLabel]="
-                                playlistReset.removeAllProgressLabel()
-                            "
-                            (importData)="importData()"
-                            (exportData)="exportData()"
-                            (removeAll)="removeAll()"
                         />
                     }
                     @case ('about') {
