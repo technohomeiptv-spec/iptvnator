@@ -30,6 +30,18 @@ interface SettingsNavGroupView {
     readonly sections: readonly SettingsNavItem[];
 }
 
+/**
+ * Tech Home TV: settings sections that are not offered to subscribers
+ * (EPG sources, dashboard widgets, remote control, TMDB key, backup).
+ */
+const HIDDEN_SETTINGS_SECTIONS: ReadonlySet<string> = new Set([
+    'epg',
+    'dashboard',
+    'remote-control',
+    'tmdb',
+    'backup',
+]);
+
 @Component({
     selector: 'app-workspace-settings-context-panel',
     imports: [
@@ -159,9 +171,16 @@ export class WorkspaceSettingsContextPanelComponent {
         }
     );
 
+    /** Sections offered to the subscriber (hidden ones are left out). */
+    private readonly visibleSections = computed(() =>
+        this.ctx
+            .sections()
+            .filter((section) => !HIDDEN_SETTINGS_SECTIONS.has(section.id))
+    );
+
     /** Grouped sections in group order; empty groups are left out. */
     readonly groups = computed<readonly SettingsNavGroupView[]>(() => {
-        const sections = this.ctx.sections();
+        const sections = this.visibleSections();
         return SETTINGS_NAV_GROUPS.map((group) => ({
             id: group.id,
             labelKey: group.labelKey,
@@ -171,7 +190,7 @@ export class WorkspaceSettingsContextPanelComponent {
 
     /** Sections without a group sit at the bottom (About). */
     readonly footer = computed(() =>
-        this.ctx.sections().filter((section) => !section.group)
+        this.visibleSections().filter((section) => !section.group)
     );
 
     constructor() {
